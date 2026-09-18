@@ -7,13 +7,13 @@
 #include <string>
 #include <vector>
 
-#include "radio/SX1262.h"
+#include "radio/LoRaRadio.h"
 
 // RNode-framed LoRa driver. The raw-frame sink is the RX handoff;
 // TX enters via sendRaw from the protocol pump.
 class LoRaInterface {
 public:
-    LoRaInterface(SX1262* radio, const char* name = "LoRaInterface");
+    LoRaInterface(LoRaRadio* radio, const char* name = "LoRaInterface");
     ~LoRaInterface();
 
     bool start();
@@ -57,7 +57,7 @@ private:
     bool _online = false;
     uint32_t _bitrate = 0;
 
-    SX1262* _radio;
+    LoRaRadio* _radio;
     bool _txPending = false;
     std::vector<uint8_t> _txData;
 

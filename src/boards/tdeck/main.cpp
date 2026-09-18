@@ -9,19 +9,34 @@
 #include <esp_netif.h>
 #include <lvgl.h>
 
+#if defined(RSM9)
+#include "../m9/config/BoardConfig.h"
+#else
 #include "config/BoardConfig.h"
+#endif
 #include "config/Config.h"
+#if defined(RSM9)
+#include "../m9/platform/RsM9ModeSwitch.h"
+#include "../m9/hal/Display.h"
+#include "../m9/hal/Keyboard.h"
+#include "../m9/hal/Power.h"
+#include "../m9/radio/LR1110Radio.h"
+#include "../m9/input/InputManager.h"
+#include "../m9/audio/AudioNotify.h"
+#else
 #include "platform/RsDeckModeSwitch.h"
 #include "hal/Display.h"
 #include "hal/TouchInput.h"
 #include "hal/Trackball.h"
 #include "hal/Keyboard.h"
 #include "hal/Power.h"
+#include "radio/SX1262.h"
+#include "input/InputManager.h"
+#include "audio/AudioNotify.h"
+#endif
 #if HAS_GPS
 #include "hal/GPSManager.h"
 #endif
-#include "radio/SX1262.h"
-#include "input/InputManager.h"
 #include "input/HotkeyManager.h"
 #include "UIManager.h"
 #include "Theme.h"
@@ -57,7 +72,6 @@
 #include "transport/TCPClientInterface.h"
 #include "transport/RnsAutoInterface.h"
 #include "config/UserConfig.h"
-#include "audio/AudioNotify.h"
 #include "util/PerfTrace.h"
 #include <ArduinoJson.h>
 #include <Preferences.h>
@@ -81,14 +95,22 @@ SET_LOOP_TASK_STACK_SIZE(16384);
 // Do NOT use SPI2_HOST (IDF constant = 1) — Arduino treats index 1 as HSPI/SPI3!
 SPIClass sharedSPI(FSPI);
 
+#if defined(RSM9)
+LR1110Radio radio(&sharedSPI, LORA_CS, LORA_IRQ, LORA_RST, LORA_BUSY);
+#else
 SX1262 radio(&sharedSPI,
     LORA_CS, SPI_SCK, SPI_MOSI, SPI_MISO,
     LORA_RST, LORA_IRQ, LORA_BUSY, LORA_RXEN,
     LORA_HAS_TCXO, LORA_DIO2_AS_RF_SWITCH);
+#endif
 
 Display display;
+#if HAS_TOUCH
 TouchInput touch;
+#endif
+#if HAS_TRACKBALL
 Trackball trackball;
+#endif
 Keyboard keyboard;
 
 // --- Subsystems ---
@@ -394,7 +416,11 @@ static void printAutoIface() {
 }
 static void printDiagnostics() {
     Serial.println("=== DIAGNOSTIC DUMP ===");
+#if defined(RSM9)
+    Serial.printf("Device: rsM9 ThinkNode M9\n");
+#else
     Serial.printf("Device: rsDeck T-Deck Plus\n");
+#endif
     Serial.printf("Protocol: %s\n", backend->backendName());
     // Diagnostic state read through the backend facade (proves live delegation;
     // identical to rns.* since MicroReticulumBackend is pure delegation).
@@ -426,9 +452,11 @@ static void printDiagnostics() {
                           loraIf->airtimeUtilization() * 100.0f);
         }
         Serial.printf("IQ invert: %s\n", radio.getInvertIQ() ? "ON" : "off");
+    #if !defined(RSM9)
         Serial.printf("SyncWord regs: 0x%02X%02X\n",
             radio.readRegister(REG_SYNC_WORD_MSB_6X),
             radio.readRegister(REG_SYNC_WORD_LSB_6X));
+    #endif
         uint16_t devErr = radio.getDeviceErrors();
         uint8_t status = radio.getStatus();
         Serial.printf("DevErrors: 0x%04X  Status: 0x%02X (mode=%d cmd=%d)\n",
@@ -1107,8 +1135,12 @@ void setup() {
     delay(100);
     Serial.println();
     Serial.println("=================================");
-    Serial.printf("  rsDeck v%s\n", RSDECK_VERSION_STRING);
+    Serial.printf("  %s v%s\n", DEVICE_NAME, RSDECK_VERSION_STRING);
+#if defined(RSM9)
+    Serial.println("  Elecrow ThinkNode M9");
+#else
     Serial.println("  LilyGo T-Deck Plus");
+#endif
     Serial.printf("  Protocol: %s\n", backend->backendName());
     Serial.println("=================================");
 
@@ -1154,6 +1186,9 @@ void setup() {
     // Deassert all slave CS pins to prevent bus contention
     pinMode(LORA_CS, OUTPUT); digitalWrite(LORA_CS, HIGH);
     pinMode(SD_CS, OUTPUT);   digitalWrite(SD_CS, HIGH);
+#if defined(RSM9)
+    pinMode(TFT_CS, OUTPUT);  digitalWrite(TFT_CS, HIGH);
+#endif
     bootTraceStage("i2c-spi");
 
     // Mount flash before radio bring-up so persisted RF settings are used from
@@ -1177,10 +1212,15 @@ void setup() {
     if (radio.begin(userConfig.settings().loraFrequency)) {
         radioOnline = true;
         applyRadioSettingsToHardware(userConfig.settings(), "RADIO");
-        Serial.printf("[RADIO] SX1262 online at %lu Hz\n",
+        Serial.printf("[RADIO] %s online at %lu Hz\n",
+    #if defined(RSM9)
+                  "LR1110",
+    #else
+                  "SX1262",
+    #endif
                       (unsigned long)userConfig.settings().loraFrequency);
     } else {
-        Serial.println("[RADIO] SX1262 not detected!");
+        Serial.println("[RADIO] LoRa radio not detected!");
     }
     bootTraceStage("radio-init");
 
@@ -1196,13 +1236,15 @@ void setup() {
     }
     bootTraceStage("sd-probe");
 
-    // Verify radio SPI still works after SD init
+    // Verify SX1262 SPI still works after SD init.
+#if !defined(RSM9)
     if (radioOnline) {
         uint8_t sw_msb = radio.readRegister(0x0740);
         uint8_t sw_lsb = radio.readRegister(0x0741);
         Serial.printf("[BOOT] Radio SPI pre-display: syncword=0x%02X%02X %s\n",
             sw_msb, sw_lsb, (sw_msb == 0xFF && sw_lsb == 0xFF) ? "DEAD!" : "OK");
     }
+        #endif
 
     // Step 5: Display HAL — LovyanGFX + ST7789V
     // LovyanGFX's Bus_SPI::init() calls spi_bus_initialize() which will
@@ -1224,13 +1266,15 @@ void setup() {
     Serial.println("[BOOT] LVGL initialized");
     bootTraceStage("lvgl-init");
 
-    // Verify radio SPI survives display init
+    // Verify SX1262 SPI survives display init.
+#if !defined(RSM9)
     if (radioOnline) {
         uint8_t sw_msb = radio.readRegister(0x0740);
         uint8_t sw_lsb = radio.readRegister(0x0741);
         Serial.printf("[BOOT] Radio SPI post-display: syncword=0x%02X%02X %s\n",
             sw_msb, sw_lsb, (sw_msb == 0xFF && sw_lsb == 0xFF) ? "DEAD!" : "OK");
     }
+        #endif
 
     // Step 6: UI manager (initializes both legacy and LVGL UI layers)
     ui.begin();
@@ -1246,10 +1290,12 @@ void setup() {
     bootTraceStage("boot-screen-painted");
 
     // Step 7: Touch HAL — GT911 I2C
+#if HAS_TOUCH
     touch.begin();
     lvBootScreen.setProgress(0.50f, "Touch ready");
     // (LVGL boot renders via lv_timer_handler in setProgress)
     bootTraceStage("touch-init");
+#endif
 
     // Step 8: Keyboard HAL — ESP32-C3 I2C
     keyboard.begin();
@@ -1258,17 +1304,27 @@ void setup() {
     bootTraceStage("keyboard-init");
 
     // Step 9: Trackball HAL — GPIO interrupts
+#if HAS_TRACKBALL
     trackball.begin();
     lvBootScreen.setProgress(0.54f, "Trackball ready");
     // (LVGL boot renders via lv_timer_handler in setProgress)
     bootTraceStage("trackball-init");
+#endif
 
     // Step 10: Input manager
+#if defined(RSM9)
+    inputManager.begin(&keyboard);
+#else
     inputManager.begin(&keyboard, &trackball, &touch);
+#endif
     inputManager.setPowerMgr(&powerMgr);
 
     // Step 10.5: LVGL input drivers
+#if defined(RSM9)
+    LvInput::init(&keyboard, nullptr);
+#else
     LvInput::init(&keyboard, &trackball, &touch);
+#endif
 
     lvBootScreen.setProgress(0.55f, "Input ready");
     // (LVGL boot renders via lv_timer_handler in setProgress)
@@ -1504,7 +1560,7 @@ void setup() {
         gps.setPosixTZ(currentPosixTZ());
         gps.setLocationEnabled(userConfig.settings().gpsLocationEnabled);
         gps.begin();
-        Serial.println("[BOOT] GPS UART started (MIA-M10Q)");
+        Serial.println("[BOOT] GPS UART started");
         bootTraceStage("gps-start");
     }
 #endif
@@ -1849,7 +1905,7 @@ void setup() {
     }
     bootTraceStage("keyboard-auto");
 
-    Serial.println("[BOOT] rsDeck ready");
+    Serial.printf("[BOOT] %s ready\n", DEVICE_NAME);
     Serial.printf("[BOOT] Summary: radio=%s flash=%s sd=%s\n",
                   radioOnline ? "ONLINE" : "OFFLINE",
                   flash.isReady() ? "OK" : "FAIL",
@@ -2152,6 +2208,14 @@ void loop() {
     if (inputManager.hasKeyEvent() && !wakeOnlyInput) {
         const KeyEvent& evt = inputManager.getKeyEvent();
 
+#if defined(RSM9)
+        if (evt.home) {
+            ui.lvTabBar().setActiveTab(LvTabBar::TAB_HOME);
+            ui.setScreen(&lvHomeScreen);
+        } else if (evt.messages) {
+            onHotkeyMessages();
+        } else
+#endif
         // Help overlay intercepts all keys when visible
         if (lvHelpOverlay.isVisible()) {
             lvHelpOverlay.handleKey(evt);

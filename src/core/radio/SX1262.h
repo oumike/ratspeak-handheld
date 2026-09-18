@@ -7,10 +7,11 @@
 
 #include <Arduino.h>
 #include <SPI.h>
+#include "LoRaRadio.h"
 #include "RadioConstants.h"
 #include "config/BoardConfig.h"
 
-class SX1262 {
+class SX1262 : public LoRaRadio {
 public:
     SX1262(SPIClass* spi, int ss, int sclk, int mosi, int miso,
            int reset, int irq, int busy, int rxen = -1,
@@ -158,7 +159,4 @@ private:
 
     static SX1262* _instance;
 
-public:
-    // Interrupt-driven RX availability flag (set by DIO1 ISR)
-    volatile bool packetAvailable = false;
 };

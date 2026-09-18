@@ -12,7 +12,7 @@
 #define RNODE_NIBBLE_SEQ    0xF0
 #define RNODE_SINGLE_MTU    (MAX_PACKET_SIZE - RNODE_HEADER_L)  // 254 bytes payload per frame
 
-LoRaInterface::LoRaInterface(SX1262* radio, const char* name)
+LoRaInterface::LoRaInterface(LoRaRadio* radio, const char* name)
     : _name(name ? name : "LoRaInterface"), _radio(radio)
 {
     refreshRadioTiming(true);

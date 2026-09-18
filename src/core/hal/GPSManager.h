@@ -61,7 +61,13 @@ private:
     bool _baudDetected = false;
     int _baudAttemptIdx = 0;
     unsigned long _baudAttemptStart = 0;
-    static constexpr uint32_t BAUD_RATES[] = {38400, 115200, 9600};
+#if GPS_BAUD == 115200
+    static constexpr uint32_t BAUD_RATES[] = {115200, 38400, 9600};
+#elif GPS_BAUD == 9600
+    static constexpr uint32_t BAUD_RATES[] = {9600, 38400, 115200};
+#else
+    static constexpr uint32_t BAUD_RATES[] = {GPS_BAUD, 115200, 9600};
+#endif
     static constexpr int BAUD_RATE_COUNT = 3;
     static constexpr unsigned long BAUD_DETECT_TIMEOUT_MS = 3000;
 

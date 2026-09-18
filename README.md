@@ -14,7 +14,8 @@
 
 Ratspeak Handheld combines [rsDeck](https://github.com/ratspeak/rsDeck),
 [rsPager](https://github.com/ratspeak/rsPager), and
-[rsCardputer](https://github.com/ratspeak/rsCardputer) in one repo.
+[rsCardputer](https://github.com/ratspeak/rsCardputer) in one repo, with
+standalone firmware support for the Elecrow ThinkNode M9.
 The Reticulum and LXMF core is now written in Rust, replacing
 our half-baked microReticulum fork. Over time, this repo will evolve to support more handheld devices, but is intentionally slim during the first beta rollout.
 
@@ -25,8 +26,12 @@ our half-baked microReticulum fork. Over time, this repo will evolve to support 
 | LilyGo T-Deck Plus | Beta |
 | LilyGo T-Pager | Beta |
 | M5Stack Cardputer Adv* | In Testing |
+| Elecrow ThinkNode M9** | In Testing |
 
 *Cardputer Adv requires the Cap LoRa-1262 for LoRa connectivity.
+
+**ThinkNode M9 currently supports Standalone mode only; the vendored RNode
+firmware does not have an M9/LR1110 target.
 
 ## Modes
 
@@ -72,6 +77,15 @@ make package DEVICE=tdeck
 
 Use `DEVICE=tpager` or `DEVICE=cardputer` for the other boards. Packaging builds
 the launcher and both modes, checks image sizes, and writes the files to `dist/`.
+
+Build or upload the standalone ThinkNode M9 target directly with PlatformIO:
+
+```bash
+python3 -m platformio run -e m9
+python3 -m platformio run -e m9 -t upload
+```
+
+The M9 uses its UART bridge for serial output rather than native USB CDC.
 
 Normal builds use the included Rust libraries; a Rust toolchain is not needed.
 Shared firmware lives in `src/core/`, board support in `src/boards/`, user

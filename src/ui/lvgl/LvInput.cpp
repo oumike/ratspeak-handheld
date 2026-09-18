@@ -123,7 +123,9 @@ static Trackball* s_tb = nullptr;
 #elif HAS_SCROLLWHEEL
 static Scrollwheel* s_sw = nullptr;
 #endif
+#if HAS_TOUCH
 static TouchInput* s_touch = nullptr;
+#endif
 static lv_group_t* s_group = nullptr;
 static lv_obj_t* s_cursor = nullptr;
 
@@ -153,6 +155,7 @@ static void group_focus_cb(lv_group_t* g) {
     if (s_focusSuppressed) clearFocusVisual(lv_group_get_focused(g));
 }
 
+#if HAS_TOUCH
 static void touchpad_read_cb(lv_indev_drv_t *indev_driver, lv_indev_data_t *data) {
     if (!s_touch || !s_cursor) {
         data->state = LV_INDEV_STATE_REL;
@@ -180,6 +183,7 @@ static void touchpad_read_cb(lv_indev_drv_t *indev_driver, lv_indev_data_t *data
         }
     }
 }
+#endif
 
 static void keypad_read_cb(lv_indev_drv_t* drv, lv_indev_data_t* data) {
     if (s_keyReady) {
@@ -201,8 +205,15 @@ void init(Keyboard* kb, Trackball* tb, TouchInput* touch) {
 void init(Keyboard* kb, Scrollwheel* sw, TouchInput* touch) {
     s_kb = kb;
     s_sw = sw;
+#else
+void init(Keyboard* kb, TouchInput* touch) {
+    s_kb = kb;
 #endif
+#if HAS_TOUCH
     s_touch = touch;
+#else
+    (void)touch;
+#endif
 
     // Create input group
     s_group = lv_group_create();
@@ -217,6 +228,7 @@ void init(Keyboard* kb, Scrollwheel* sw, TouchInput* touch) {
     lv_indev_t* keyIndev = lv_indev_drv_register(&keyDrv);
     lv_indev_set_group(keyIndev, s_group);
 
+#if HAS_TOUCH
     if (touch) {
         // Register a touchscreen input device
         static lv_indev_drv_t touchDrv;
@@ -248,6 +260,10 @@ void init(Keyboard* kb, Scrollwheel* sw, TouchInput* touch) {
         s_cursor = nullptr;
         Serial.println("[LVGL] Input drivers registered (keypad only)");
     }
+#else
+    s_cursor = nullptr;
+    Serial.println("[LVGL] Input drivers registered (keypad only)");
+#endif
 }
 
 void applyTheme() {

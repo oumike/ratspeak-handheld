@@ -18,21 +18,25 @@ def merge_bin(source, target, env):
     pioenv = env["PIOENV"]
     tpager = pioenv.startswith("tpager")
     cardputer = pioenv.startswith("cardputer")
+    m9 = pioenv.startswith("m9")
     if tpager:
         output_name = "rspager-standalone-factory.bin"
     elif cardputer:
         output_name = "rscardputer-standalone-factory.bin"
+    elif m9:
+        output_name = "rsm9-standalone-factory.bin"
     else:
         output_name = "rsdeck-merged.bin"
-    flash_freq = "--flash-freq 80m " if tpager else ""
+    flash_freq = "--flash_freq 80m " if tpager or m9 else ""
+    flash_mode = "qio" if m9 else "dio"
     flash_size = "8MB" if cardputer else "16MB"
     output = os.path.join(build_dir, output_name)
 
     python = env.subst("$PYTHONEXE")
     result = env.Execute(
-        f"{shlex.quote(python)} -m esptool --chip esp32s3 merge-bin "
-        f"--flash-mode dio {flash_freq}--flash-size {flash_size} "
-        f"-o {shlex.quote(output)} "
+        f"{shlex.quote(python)} -m esptool --chip esp32s3 merge_bin "
+        f"--flash_mode {flash_mode} {flash_freq}--flash_size {flash_size} "
+        f"--output {shlex.quote(output)} "
         f"0x0000 {shlex.quote(os.path.join(build_dir, 'bootloader.bin'))} "
         f"0x8000 {shlex.quote(os.path.join(build_dir, 'partitions.bin'))} "
         f"0xe000 {shlex.quote(boot_app0)} "

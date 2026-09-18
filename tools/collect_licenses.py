@@ -24,7 +24,8 @@ import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ALL = ["tdeck", "tpager", "cardputer"]
+ALL = ["tdeck", "tpager", "cardputer", "m9"]
+RNODE_BOARDS = ["tdeck", "tpager", "cardputer"]
 MODES = ["standalone", "launcher", "rnode"]
 LICENSE_NAME = re.compile(r"^(?:licen[cs]e|copying|copyright|notice|unlicense)(?:[._-].*)?$", re.I)
 IDF_REF = "38eeba213aa695aabfd6d89aa9f5078dbe5a94c3"
@@ -74,6 +75,8 @@ class Collector:
         self.arduino = arduino
         self.rust = rust
         self.arduino_data = arduino_data
+        exact_framework = pio / "packages/framework-arduinoespressif32@3.20016.0"
+        self.framework = exact_framework if exact_framework.is_dir() else pio / "packages/framework-arduinoespressif32"
         self.components = []
 
     def component(self, name, version, source, boards=ALL, modes=MODES, note=""):
@@ -201,7 +204,7 @@ class Collector:
                         raise ValueError(f"registry notice differs from locked archive: {root.name}/{notice['path']}")
 
     def collect(self):
-        framework = self.pio / "packages/framework-arduinoespressif32"
+        framework = self.framework
         if json.loads((framework / "package.json").read_text())["version"] != "3.20016.0":
             raise ValueError("PlatformIO Arduino framework version drift")
         if run("rustc", "+esp", "--version") != input_pins()["rust_toolchain"]:
@@ -215,11 +218,13 @@ class Collector:
             self.file(component, ROOT.parent / name, "LICENSE")
         arduino_json, _ = self.pio_library("ArduinoJson", "7.4.3", "bblanchon/ArduinoJson", "v7.4.3", ALL)
         arduino_json["modes"] = ["standalone"]
-        graphics, graphics_root = self.pio_library("LovyanGFX", "1.1.16", "lovyan03/LovyanGFX", "1.1.16", ["tdeck", "tpager"])
+        graphics, graphics_root = self.pio_library("LovyanGFX", "1.1.16", "lovyan03/LovyanGFX", "1.1.16", ["tdeck", "tpager", "m9"])
         self.source_notices(graphics, graphics_root)
-        lvgl, lvgl_root = self.pio_library("lvgl", "8.3.11", "lvgl/lvgl", "v8.3.11", ["tdeck", "tpager"])
+        lvgl, lvgl_root = self.pio_library("lvgl", "8.3.11", "lvgl/lvgl", "v8.3.11", ["tdeck", "tpager", "m9"])
         lvgl["modes"] = ["standalone"]
         self.file(lvgl, lvgl_root, "src/extra/libs/qrcode/qrcodegen.c", header=True)
+        radiolib, _ = self.pio_library("RadioLib", "7.7.1", "jgromes/RadioLib", "7.7.1", ["m9"])
+        radiolib["modes"] = ["standalone"]
         for name, version, repo, ref in (
             ("M5GFX", "0.2.19", "m5stack/M5GFX", "53a7184601f3667b030ba141c58b87ce2acfaa2a"),
             ("M5Unified", "0.2.13", "m5stack/M5Unified", "a6256725481f1bc366655fa48cf03b6095e30ad1"),
@@ -239,7 +244,7 @@ class Collector:
             ("Font Awesome 5.9.0", "FortAwesome/Font-Awesome", "ba907eaec40fab01d410c3023a5572b2cb46cea6", ["LICENSE.txt"]),
         ):
             component = self.component(name, ref, f"https://github.com/{repo}/tree/{ref}",
-                                       ["tdeck", "tpager"], ["standalone"],
+                                       ["tdeck", "tpager", "m9"], ["standalone"],
                                        "Font notices for generated LVGL fonts, including custom Montserrat glyphs.")
             self.remote(component, repo, ref, paths)
             if name == "Montserrat":
@@ -277,7 +282,7 @@ class Collector:
             if digest(archive.read_bytes()) != expected_checksum:
                 raise ValueError(f"Arduino registry archive checksum mismatch: {spec}")
             component = self.component("Arduino: " + name, version,
-                package["url"], modes=["rnode"],
+                package["url"], boards=RNODE_BOARDS, modes=["rnode"],
                 note="Pinned RNode build dependency; board-conditional dependencies are included conservatively.")
             component["source_repository"] = f"https://github.com/{rnode_repos[name]}"
             component["archive_sha256"] = expected_checksum
@@ -308,11 +313,12 @@ class Collector:
         for version, ref in ARDUINO_REFS.items():
             component = self.component("Arduino-ESP32", version,
                 f"https://github.com/espressif/arduino-esp32/tree/{ref}",
+                boards=RNODE_BOARDS if version == "2.0.17" else ALL,
                 modes=["rnode"] if version == "2.0.17" else ["standalone", "launcher"])
             self.remote(component, "espressif/arduino-esp32", ref,
                         ["LICENSE.md", "cores/esp32/libb64/LICENSE", "libraries/BLE/LICENSE"])
             if version == "2.0.16":
-                self.file(component, self.pio / "packages/framework-arduinoespressif32", "cores/esp32/Arduino.h", header=True)
+                self.file(component, self.framework, "cores/esp32/Arduino.h", header=True)
 
         self.sdk()
         toolchain = self.pio / "packages/toolchain-xtensa-esp32s3"
@@ -329,7 +335,8 @@ class Collector:
         self.file(rust, self.rust, "share/doc/rust/COPYRIGHT-library.html")
         self.file(rust, self.rust, "lib/rustlib/src/rust/library/compiler-builtins/LICENSE.txt")
         radio = self.component("RNode radio drivers", "vendored",
-            "https://github.com/ratspeak/ratspeak-handheld/tree/main/vendor/rnode_firmware", modes=["rnode"])
+            "https://github.com/ratspeak/ratspeak-handheld/tree/main/vendor/rnode_firmware",
+            boards=RNODE_BOARDS, modes=["rnode"])
         self.add(radio, "sx126x, sx127x, sx128x copyright", b"Copyright Sandeep Mistry, Mark Qvist and Jacob Eva.\nLicensed under the MIT license.\n",
                  radio["source"] + "/sx126x.cpp")
         self.file(radio, ROOT / "vendor/rnode_firmware", "ST7789.h", header=True)
@@ -348,10 +355,10 @@ class Collector:
             "components/console/linenoise/LICENSE", "components/freertos/LICENSE.md",
             "components/newlib/COPYING.NEWLIB", "components/nghttp/COPYING", "components/nghttp/LICENSE",
             "components/wpa_supplicant/COPYING"])
-        self.file(sdk, self.pio / "packages/framework-arduinoespressif32/tools/sdk/esp32s3",
+        self.file(sdk, self.framework / "tools/sdk/esp32s3",
                   "include/fatfs/src/ff.h", header=True,
                   source=f"https://github.com/espressif/esp-idf/blob/{IDF_REF}/components/fatfs/src/ff.h")
-        self.source_notices(sdk, self.pio / "packages/framework-arduinoespressif32/tools/sdk/esp32s3/include",
+        self.source_notices(sdk, self.framework / "tools/sdk/esp32s3/include",
             source_prefix=f"https://github.com/espressif/arduino-esp32/blob/{ARDUINO_REFS['2.0.16']}/tools/sdk/esp32s3/include/")
         for name, repo, ref, paths in (
             ("lwIP", "espressif/esp-lwip", "a45be9e438f6cf9c54ec150581819c3b95d5af6b", ["COPYING"]),
@@ -418,7 +425,7 @@ def check_bundle(output=ROOT / "licenses"):
     if len(identities) != len(set(identities)):
         raise ValueError("duplicate license component")
     names = {c["name"] for c in manifest["components"]}
-    required = {"Arduino-ESP32", "ArduinoJson", "LovyanGFX", "lvgl", "M5GFX", "M5Unified", "M5Cardputer",
+    required = {"Arduino-ESP32", "ArduinoJson", "LovyanGFX", "lvgl", "RadioLib", "M5GFX", "M5Unified", "M5Cardputer",
                 "IRremote", "Montserrat", "Font Awesome 5.9.0", "RNode radio drivers", "ESP-IDF SDK",
                 "Rust core, alloc and compiler-builtins", "Xtensa GCC and newlib runtimes"}
     required.update("ESP-IDF: " + name for name in ("lwIP", "mbedTLS", "ESP Wi-Fi binaries", "ESP PHY binaries",
