@@ -225,6 +225,10 @@ void init() {
     lv_obj_set_width(s_kb, LV_HOR_RES);
     lv_obj_set_style_text_font(s_kb, &lv_font_montserrat_16, 0);
     lv_obj_set_style_radius(s_kb, 0, 0);
+    // No LVGL theme is active, so btnmatrix defaults to transparent; the
+    // keyboard must hide whatever it covers, including the tab bar.
+    lv_obj_set_style_bg_opa(s_kb, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_opa(s_kb, LV_OPA_COVER, LV_PART_ITEMS);
     lv_obj_set_style_border_width(s_kb, 1, 0);
     lv_obj_set_style_border_side(s_kb, LV_BORDER_SIDE_TOP, 0);
     lv_obj_set_style_pad_all(s_kb, 3, 0);
