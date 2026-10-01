@@ -1,6 +1,7 @@
-// Audio output for T-Pager via I2S codec/amplifier path
-#include "AudioNotify.h"
+// Notification audio through an ES8311 codec and a switched amplifier.
 #include "config/BoardConfig.h"
+#if HAS_ES8311_AUDIO
+#include "audio/Es8311Notify.h"
 #include "hal/Power.h"
 #include <Wire.h>
 #include <driver/i2s.h>
@@ -8,6 +9,9 @@
 
 #define AUDIO_SAMPLE_RATE  16000
 #define I2S_PORT           I2S_NUM_0
+#ifndef AUDIO_AMP_SETTLE_MS
+#define AUDIO_AMP_SETTLE_MS 20
+#endif
 
 namespace {
 constexpr uint8_t ES8311_ADDR = 0x18;
@@ -92,7 +96,7 @@ void AudioNotify::begin() {
         Serial.println("[AUDIO] ES8311 codec init failed");
     } else {
         Power::setSpeakerPower(_enabled && _volume > 0);
-        delay(20);
+        delay(AUDIO_AMP_SETTLE_MS);
     }
 }
 
@@ -430,3 +434,5 @@ void AudioNotify::playBoot() {
 
     free(buf);
 }
+
+#endif
